@@ -66,7 +66,7 @@ This step alone should already give you the `LionTabs` docs inside your own Stor
 
 Potentially the hardest part is to analyze your extension `LeaTabs`, and to figure out how we should transform the import paths for `LionTabs` to new paths to your `LeaTabs`.
 
-To do this we make use of [Providence](http://localhost:9001/?path=/docs/tools-providence-main--run-providence). This tool has a command that creates a full map of all the import paths of a reference project (`Lion`) and can replace them with the correct paths of a target project (`Lea`).
+To do this we make use of [Providence](https://lion-web-components.netlify.app/?path=/docs/tools-providence-main--run-providence). This tool has a command that creates a full map of all the import paths of a reference project (`Lion`) and can replace them with the correct paths of a target project (`Lea`).
 
 So lets install it:
 
@@ -86,7 +86,7 @@ The `--prefix-from` and `--prefix-to` are the prefixes of the project you extend
 
 If you know you only use a single component from lion, you can reduce the time the tool needs for analysis, by specifying this package `-r 'node_modules/@lion/tabs'`.
 
-Running the script will create a `providence-extend-docs-data.json` file, with all from/to information. You can change the name / location of the output file, refer to [Providence Documentation](http://localhost:9001/?path=/docs/tools-providence-main--run-providence) for this.
+Running the script will create a `providence-extend-docs-data.json` file, with all from/to information. You can change the name / location of the output file, refer to [Providence Documentation](https://lion-web-components.netlify.app/?path=/docs/tools-providence-main--run-providence) for this.
 
 #### Running it automatically when upgrading lion dependency
 
@@ -164,9 +164,76 @@ In some cases you don't want to show all examples of how to use a component. Som
 
 In our example, we will show you have to remove the `Rationale` section that you would normally inherit from the `Lion` documentation.
 
-For this step we make use of a remark plugin for the MD content, similar to how you would use a babel plugin for JS content. It is called [Remark extend](http://localhost:9001/?path=/docs/tools-remark-extend--page).
+For this step we make use of a remark plugin for the MD content, similar to how you would use a babel plugin for JS content. It is called [Remark extend](https://lion-web-components.netlify.app/?path=/docs/tools-remark-extend--page).
 
-- Babel plugin use it with generated config
-- Remark extend plugin for content overrides:
-  1. replacers
-  2. content selectors with selecting sections etc.
+First of all we need to add the plugin to the `.storybook/main.js`
+
+```js
+const fs = require('fs');
+const { remarkExtend } = require('remark-extend');
+
+function isLion(filePath) {
+  return filePath.indexOf('@lion/') !== -1;
+}
+
+function getLocalOverridePath(filePath, root = process.cwd()) {
+  const rel = filePath.substring(filePath.indexOf('/@lion/') + 7, filePath.length - 3);
+  return `${root}/packages/${rel}.override.md`;
+}
+
+module.exports = {
+  [...],
+  setupMdjsPlugins: (plugins, filePath) => {
+    if (!isLion(filePath)) {
+      return plugins;
+    }
+    const newPlugins = [...plugins];
+    const markdownIndex = newPlugins.findIndex(plugin => plugin.name === 'markdown');
+    const overridePaths = [`${process.cwd()}/.storybook/all.override.md`];
+    overridePaths.push(getLocalOverridePath(filePath));
+
+    let i = 0;
+    for (const overridePath of overridePaths.reverse()) {
+      if (fs.existsSync(overridePath)) {
+        const extendMd = fs.readFileSync(overridePath, 'utf8');
+        newPlugins.splice(markdownIndex, 0, {
+          name: `remarkExtend${i}`,
+          plugin: remarkExtend.bind({}),
+          options: { extendMd, filePath, overrideFilePath: overridePath },
+        });
+      }
+      i += 1;
+    }
+    return newPlugins;
+  },
+  [...],
+};
+```
+
+In the code above we have 2 places in where you can do overrides: `./.storybook/all.override.md` for generic overrides and `./packages/**/{rel}.override.md` for each component, when needed, the `rel` needs to be the same in `lion` and your own project to be able to override the right file.
+
+In each file you need to add a specifier which section you want to override
+
+````md
+```
+::addMdAfter(':scope:last-child')
+```
+
+### Lea Tabs Special Feature
+
+```js preview-story
+export const iconOnly = () =>
+  html`
+    <lea-tabs>
+      <lea-tab slot="tab">Info</lea-tab>
+      <lea-tab-panel slot="panel">
+        Info page with lots of information about us.
+      </lea-tab-panel>
+      <lea-tab slot="tab">Work</lea-tab>
+      <lea-tab-panel slot="panel">
+        Work page that showcases our work.
+      </lea-tab-panel>
+    </lea-tabs>
+  `;
+```
+````
